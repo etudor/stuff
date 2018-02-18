@@ -2,12 +2,12 @@
 
 class Reducers
 {
-    public $reducers;
+    public  $reducers;
     private $path;
 
-    public function registerReducer(string $type, callable $function)
+    public function registerReducer(Action $action)
     {
-        $this->reducers[$type][$this->getID($function)][] = $function;
+        $this->reducers[$action->getName()][$this->getID($action)][] = $action;
     }
 
     public function dispatch($type, $data, &$path = null)
@@ -18,25 +18,36 @@ class Reducers
 
         $path[$type] = [
             'data'     => $data,
-            'children' => [],
+            '_children' => [],
         ];
 
         if (isset($this->reducers[$type][$this->getIdFromParams(array_keys($data))])) {
             $toRun = [];
-            foreach ($this->reducers[$type][$this->getIdFromParams(array_keys($data))] as $reducer) {
-                print 'Event: ' . $type . PHP_EOL;
+            /** @var Action $action */
+            foreach ($this->reducers[$type][$this->getIdFromParams(array_keys($data))] as $action) {
+                print 'Event fired: ' . $type . PHP_EOL;
+
+                $action->setParent($path[$type]['_children']);
+                $action->setDispatch([$this, 'dispatch']);
 
                 $toRun[] = [
-                    'callable' => $reducer,
-                    'args'     => array_merge($data, ['dispatch' => [$this, 'dispatch'], 'path' => &$path[$type]['children']])
+                    'action' => $action,
+                    'data'   => $data,
                 ];
             }
 
-            foreach ($toRun as $run) {
-                call_user_func_array($run['callable'], $run['args']);
+            foreach ($toRun as $action) {
+                call_user_func_array([$action['action'], 'execute'], $action['data']);
             }
         } else {
-            print 'Event has no reducer: ' . $type . PHP_EOL;
+            print 'Event has no action to handle it: ' . $type . PHP_EOL;
+
+            if (isset($this->reducers[$type])) {
+                print 'Available reducers for type ' . $type . PHP_EOL;
+                print_r(array_keys($this->reducers[$type]));
+
+                print 'Create a reducer with this params: ' . $this->getIdFromParams(array_keys($data)) . PHP_EOL;
+            }
         }
     }
 
@@ -45,16 +56,15 @@ class Reducers
         return $this->path;
     }
 
-    private function getID($function)
+    /**
+     * @throws ReflectionException
+     */
+    private function getID($action)
     {
-        $f      = new ReflectionFunction($function);
+        $f      = new ReflectionClass($action);
         $params = [];
 
-        foreach ($f->getParameters() as $parameter) {
-            if (in_array($parameter->getName(), ['dispatch', 'parent'])) {
-                continue;
-            }
-
+        foreach ($f->getMethod('execute')->getParameters() as $parameter) {
             $params[] = $parameter->getName();
         }
 
@@ -63,6 +73,10 @@ class Reducers
 
     private function getIdFromParams($data)
     {
+        if (empty($data)) {
+            return '_';
+        }
+
         sort($data);
 
         return implode(':', $data);
@@ -70,44 +84,11 @@ class Reducers
 }
 
 $reducers = new Reducers();
-$reducers->registerReducer('input', function (string $user, string $password, callable $dispatch, &$parent) {
-    // do stuff
-    $dispatch('sendEmail', [
-        'from' => 'from',
-        'to'   => 'to',
-    ], $parent);
-
-    $dispatch('createUser', [
-        'user' => new stdClass()
-    ], $parent);
-
-    $dispatch('error', [
-        'message' => 'This is sparta',
-    ], $parent);
-});
-
-$reducers->registerReducer('createUser', function ($user, callable $dispatch, &$parent) {
-    // create user
-
-    $dispatch('response', [], $parent);
-    $dispatch('sendEmail', [], $parent);
-});
-
-$reducers->registerReducer('input', function (string $user, string $password, callable $dispatch, &$parent) {
-    // do nothing or log something
-    print 'Here yeeeeeeeees .............. ' . PHP_EOL;
-});
-
-$reducers->registerReducer('input', function (
-    string $user,
-    string $password,
-    string $email,
-    callable $dispatch,
-    &$parent
-) {
-    // do nothing or log something
-    print 'Here noooooooooooooooooooooooooooooooooooooooooooo.............. ' . PHP_EOL;
-});
+$reducers->registerReducer(new InputAction());
+$reducers->registerReducer(new CreateUserAction());
+$reducers->registerReducer(new Stuff());
+$reducers->registerReducer(new StuffThis());
+$reducers->registerReducer(new SendEmailAction());
 
 $reducers->dispatch('input', [
     'user'     => 'ion',
@@ -115,8 +96,105 @@ $reducers->dispatch('input', [
 ]);
 
 print(json_encode($reducers->getPath(), JSON_PRETTY_PRINT));
+print(json_encode($reducers->reducers, JSON_PRETTY_PRINT));
 
-foreach ($reducers->reducers as $type => $reducer) {
-    print($type . ' - ');
-    print(json_encode(array_keys($reducer), JSON_PRETTY_PRINT));
+abstract class Action {
+    private   $dispatch;
+    protected $parent;
+
+    public function setDispatch(callable $dispatch)
+    {
+        $this->dispatch = $dispatch;
+    }
+
+    public function setParent(&$parent)
+    {
+        $this->parent = &$parent;
+    }
+
+    public function dispatch($type, $data)
+    {
+        call_user_func_array($this->dispatch, [
+            $type,
+            $data,
+            &$this->parent
+        ]);
+    }
+
+    abstract public function getName(): string;
+}
+
+class InputAction extends Action {
+    public function getName(): string
+    {
+        return 'input';
+    }
+
+    public function execute(string $user, string $password = null)
+    {
+        print('hereaaaa--------------');
+        // do stuff
+        $this->dispatch('sendEmail', [
+            'from' => 'from',
+            'to'   => 'to',
+        ]);
+
+        $this->dispatch('createUser', [
+            'user' => new stdClass()
+        ]);
+
+        $this->dispatch('error', [
+            'message' => 'This is sparta',
+        ]);
+
+    }
+}
+
+class CreateUserAction extends Action {
+    public function getName(): string
+    {
+        return 'createUser';
+    }
+
+    public function execute($user)
+    {
+        $this->dispatch('response', []);
+        $this->dispatch('sendEmail', []);
+    }
+}
+
+class Stuff extends Action {
+    public function getName(): string
+    {
+        return 'input';
+    }
+
+    public function execute()
+    {
+        print 'Here yeeeessss          ........ ' . PHP_EOL;
+    }
+}
+
+class StuffThis extends Action {
+    public function getName(): string
+    {
+        return 'input';
+    }
+
+    public function execute($user, $password, $email)
+    {
+        print 'Here noooooooooooooooooooooooo ........ ' . PHP_EOL;
+    }
+}
+
+class SendEmailAction extends Action {
+    public function getName(): string
+    {
+        return 'sendEmail';
+    }
+
+    public function execute($from, $to)
+    {
+
+    }
 }
