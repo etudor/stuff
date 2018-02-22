@@ -1,0 +1,23 @@
+
+{
+    "name": "etudor/process",
+    "description": "Simple process",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Tudorel Enache",
+            "email": "enachetudorel@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Etudor\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Etudor\\Tests\\": "tests"
+        }
+    },
+    "prefer-stable": true
+}
