@@ -82,15 +82,15 @@ class SendEmailAction extends Action {
 
 
 $reducers = new Process();
-$reducers->registerReducer(new InputAction());
-$reducers->registerReducer(new CreateUserAction());
-$reducers->registerReducer(new Stuff());
-$reducers->registerReducer(new StuffThis());
-$reducers->registerReducer(new SendEmailAction());
+$reducers->registerAction(new InputAction());
+$reducers->registerAction(new CreateUserAction());
+$reducers->registerAction(new Stuff());
+$reducers->registerAction(new StuffThis());
+$reducers->registerAction(new SendEmailAction());
 $reducers->dispatch('input', [
     'user'     => 'ion',
     'password' => 'password',
 ]);
 
 print(json_encode($reducers->getPath(), JSON_PRETTY_PRINT));
-print(json_encode($reducers->reducers, JSON_PRETTY_PRINT));
+print(json_encode($reducers->actions, JSON_PRETTY_PRINT));

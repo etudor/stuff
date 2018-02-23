@@ -2,17 +2,25 @@
 
 namespace Etudor;
 
+use const PHP_EOL;
+use function print_r;
 use ReflectionClass;
 use ReflectionException;
 
 class Process
 {
-    public  $reducers;
+    /** @var array */
+    public $actions;
+
+    /** @var array */
     private $path;
 
-    public function registerReducer(AbstractAction $action)
+    private $debug = false;
+
+    public function registerAction(AbstractAction $action, bool $debug = false)
     {
-        $this->reducers[$action->getName()][$this->getParamsAsString($action)][] = $action;
+        $this->actions[$action->getName()][$this->getParamsAsString($action)][] = $action;
+        $this->debug                                                            = $debug;
     }
 
     public function dispatch($type, $data, &$path = null)
@@ -22,15 +30,15 @@ class Process
         }
 
         $path[$type] = [
-            'data'     => $data,
+            'data'      => $data,
             '_children' => [],
         ];
 
-        if (isset($this->reducers[$type][$this->getIdFromParams(array_keys($data))])) {
+        if (isset($this->actions[$type][$this->getIdFromParams(array_keys($data))])) {
             $toRun = [];
             /** @var AbstractAction $action */
-            foreach ($this->reducers[$type][$this->getIdFromParams(array_keys($data))] as $action) {
-                print 'Event fired: ' . $type . PHP_EOL;
+            foreach ($this->actions[$type][$this->getIdFromParams(array_keys($data))] as $action) {
+                $this->debug('Event fired: ' . $type);
 
                 $action->setParent($path[$type]['_children']);
                 $action->setDispatch([$this, 'dispatch']);
@@ -45,13 +53,13 @@ class Process
                 call_user_func_array([$action['action'], 'execute'], $action['data']);
             }
         } else {
-            print 'Event has no action to handle it: ' . $type . PHP_EOL;
+            $this->debug('Event has no action to handle it: ' . $type);
 
-            if (isset($this->reducers[$type])) {
-                print 'Available reducers for type ' . $type . PHP_EOL;
-                print_r(array_keys($this->reducers[$type]));
+            if (isset($this->actions[$type])) {
+                $this->debug('Available reducers for type ' . $type);
+                $this->debug(array_keys($this->actions[$type]), true);
 
-                print 'Create a reducer with this params: ' . $this->getIdFromParams(array_keys($data)) . PHP_EOL;
+                $this->debug('Create a reducer with this params: ' . $this->getIdFromParams(array_keys($data)));
             }
         }
     }
@@ -61,12 +69,14 @@ class Process
         return $this->path;
     }
 
-    /**
-     * @throws ReflectionException
-     */
-    private function getParamsAsString(AbstractAction $action)
+    private function getParamsAsString(AbstractAction $action): string
     {
-        $f      = new ReflectionClass($action);
+        try {
+            $f = new ReflectionClass($action);
+        } catch (ReflectionException $exception) {
+            // todo log error
+        }
+
         $params = [];
 
         foreach ($f->getMethod('execute')->getParameters() as $parameter) {
@@ -76,7 +86,7 @@ class Process
         return $this->getIdFromParams($params);
     }
 
-    private function getIdFromParams($data)
+    private function getIdFromParams($data): string
     {
         if (empty($data)) {
             return '_';
@@ -85,5 +95,17 @@ class Process
         sort($data);
 
         return implode(':', $data);
+    }
+
+    private function debug($message, bool $nice = false)
+    {
+        if (true === $this->debug) {
+            if (true === $nice) {
+                print_r($message);
+                print PHP_EOL;
+            } else {
+                print $message . PHP_EOL;
+            }
+        }
     }
 }
